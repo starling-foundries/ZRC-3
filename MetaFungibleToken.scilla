@@ -4,7 +4,7 @@ scilla_version 0
 (*               Associated library                *)
 (***************************************************)
 import BoolUtils ListUtils
-library FungibleToken
+library MetaFungibleToken
 
 let one_msg = 
   fun (msg : Message) => 
@@ -51,31 +51,31 @@ let f_eq =
     builtin eq a b
 
 (* Instantiate a type function to test membership in a list *)
-let isDefaultOperator = @list_mem ByStr20
+let isDefaultTeller = @list_mem ByStr20
     
 
 (***************************************************)
 (*             The contract definition             *)
 (***************************************************)
 
-contract FungibleToken
+contract MetaFungibleToken
 (contractOwner: ByStr20,
   name : String,
   symbol: String,
   decimals: Uint32,
-  default_operators : List ByStr20
+  default_tellers : List ByStr20
 )
 
 (* Mutable fields *)
 
 field total_tokens : Uint128 = Uint128 0
 
-field revokedDefaultOperators : Map ByStr20 (Map ByStr20 Bool) = Emp ByStr20 (Map ByStr20 Bool)
+field revokedDefaultTellers : Map ByStr20 (Map ByStr20 Bool) = Emp ByStr20 (Map ByStr20 Bool)
 
 field balancesMap: Map ByStr20 Uint128 
   = Emp ByStr20 Uint128
 
-field operatorsMap: Map ByStr20 (Map ByStr20 Bool) 
+field tellersMap: Map ByStr20 (Map ByStr20 Bool) 
   = Emp ByStr20 (Map ByStr20 Bool)
 
 field allowancesMap: Map ByStr20 (Map ByStr20 Uint128) 
@@ -169,33 +169,33 @@ end
 
 (* Transitions *)
 
-(* Re-authorize a default operator *)
-(* @param operator: Address of the operator to be re-authorized. *)
-transition reauthorizeDefaultOperator(operator : ByStr20)  
-  isDefaultOperator = isDefaultOperator f_eq operator default_operators;
-  match isDefaultOperator with
+(* Re-authorize a default teller *)
+(* @param teller: Address of the teller to be re-authorized. *)
+transition reauthorizeDefaultTeller(teller : ByStr20)  
+  isDefaultTeller = isDefaultTeller f_eq teller default_tellers;
+  match isDefaultTeller with
   | False =>
     err = CodeNotFound;
     MakeError err
   | True  => 
-    delete revokedDefaultOperators[_sender][operator];
-    e = { _eventname : "ReAuthorizedDefaultOperatorSuccess"; operator : operator; sender : _sender};
+    delete revokedDefaultTellers[_sender][teller];
+    e = { _eventname : "ReAuthorizedDefaultTellerSuccess"; teller : teller; sender : _sender};
     event e
   end
 end
 
-(* Revoke a default operator *)
-(* @param operator:  Address of the operator to be revoked. *)
-transition revokeDefaultOperator(operator : ByStr20)
-  isDefaultOperator =  isDefaultOperator f_eq operator default_operators;
-  match isDefaultOperator with
+(* Revoke a default teller *)
+(* @param teller:  Address of the teller to be revoked. *)
+transition revokeDefaultTeller(teller : ByStr20)
+  isDefaultTeller =  isDefaultTeller f_eq teller default_tellers;
+  match isDefaultTeller with
   | False =>
     err = CodeNotFound;
     MakeError err
   | True  => 
     verdad = True;
-    revokedDefaultOperators[_sender][operator] := verdad;
-    e = {_eventname : "RevokedDefaultOperatorSuccess"; operator : operator; sender : _sender};
+    revokedDefaultTellers[_sender][teller] := verdad;
+    e = {_eventname : "RevokedDefaultTellerSuccess"; teller : teller; sender : _sender};
     event e
     end
 end
@@ -216,14 +216,14 @@ transition Send(from: ByStr20, recipient: ByStr20, amount: Uint128)
 end
 
 (* @dev: Moves amount tokens from sender to recipient.                     *)
-(* @param operator:   Address must be an operator of tokenOwner.           *)
+(* @param teller:   Address must be an teller of tokenOwner.           *)
 (* @param tokenOwner: Address of the sender whose balance is decreased.    *)
 (* @param recipient:  Address of the recipient whose balance is increased. *)
 (* @param amount:     Amount of tokens to be sent.                         *)
-transition OperatorSend(operator: ByStr20, tokenOwner: ByStr20, to: ByStr20, amount: Uint128)
-  someOperator <- operatorsMap[tokenOwner][operator];
+transition TellerSend(teller: ByStr20, tokenOwner: ByStr20, to: ByStr20, amount: Uint128)
+  someTeller <- tellersMap[tokenOwner][teller];
   isApproved = 
-    match someOperator with
+    match someTeller with
     | Some value => value
     | None => False
     end;
@@ -250,13 +250,13 @@ transition Burn(burn_account: ByStr20, amount: Uint128)
     end
 end
 
-(* @dev: Burn existing tokens. Only approved operator can burn a token. *)
+(* @dev: Burn existing tokens. Only approved teller can burn a token. *)
 (* @param tokenOwner: Address holding the tokens to be burned.          *)
 (* @param amount:     Number of tokens to be destroyed.                 *)
-transition OperatorBurn(operator: ByStr20, tokenOwner: ByStr20, amount: Uint128)
-  isDefaultOperator = isDefaultOperator f_eq operator default_operators;
-  isRevokedOperator <- exists revokedDefaultOperators[tokenOwner][operator];
-  isAllowed = let isNotRevokedOperator = negb isRevokedOperator in andb  isNotRevokedOperator isDefaultOperator;
+transition TellerBurn(teller: ByStr20, tokenOwner: ByStr20, amount: Uint128)
+  isDefaultTeller = isDefaultTeller f_eq teller default_tellers;
+  isRevokedTeller <- exists revokedDefaultTellers[tokenOwner][teller];
+  isAllowed = let isNotRevokedTeller = negb isRevokedTeller in andb  isNotRevokedTeller isDefaultTeller;
   match isAllowed with
     | False =>
       err = CodeNotAuthorised;
@@ -280,14 +280,14 @@ transition Mint(recipient: ByStr20, amount: Uint128)
     end
 end
 
-(* @dev: Mint new tokens. Only approved operator can mint tokens.         *)
-(* @param operator:  Address must be an operator of `to`.                 *)
+(* @dev: Mint new tokens. Only approved teller can mint tokens.         *)
+(* @param teller:  Address must be an teller of `to`.                 *)
 (* @param recipient: Address of the recipient whose balance is increased. *)
 (* @param amount:    Number of tokens to be burned.                       *)
-transition OperatorMint(operator: ByStr20, recipient: ByStr20, amount: Uint128)
-  isDefaultOperator = isDefaultOperator f_eq operator default_operators;
-  isRevokedOperator <- exists revokedDefaultOperators[recipient][operator];
-  isAllowed = let isNotRevokedOperator = negb isRevokedOperator in andb  isNotRevokedOperator isDefaultOperator;
+transition TellerMint(teller: ByStr20, recipient: ByStr20, amount: Uint128)
+  isDefaultTeller = isDefaultTeller f_eq teller default_tellers;
+  isRevokedTeller <- exists revokedDefaultTellers[recipient][teller];
+  isAllowed = let isNotRevokedTeller = negb isRevokedTeller in andb  isNotRevokedTeller isDefaultTeller;
   match isAllowed with
     | False =>
       err = CodeNotAuthorised;
@@ -297,66 +297,66 @@ transition OperatorMint(operator: ByStr20, recipient: ByStr20, amount: Uint128)
    end
 end
 
-(* @dev: Make an address an operator of the caller.                           *)
-(* @param operator: Address to be set as operator. Cannot be calling address. *)
-transition AuthorizeOperator(operator: ByStr20)
-  is_sender = builtin eq operator _sender;
+(* @dev: Make an address an teller of the caller.                           *)
+(* @param teller: Address to be set as teller. Cannot be calling address. *)
+transition AuthorizeTeller(teller: ByStr20)
+  is_sender = builtin eq teller _sender;
   match is_sender with
   | True =>
-    (* Operator is calling address, return error code *)
+    (* Teller is calling address, return error code *)
     err = CodeNotAuthorised;
     MakeError err
   | False =>
     authorize = True;
-    operatorsMap[_sender][operator] := authorize;
-    e = {_eventname : "AuthorizeOperatorSuccess"; operator : operator};
+    tellersMap[_sender][teller] := authorize;
+    e = {_eventname : "AuthorizeTellerSuccess"; teller : teller};
     event e
   end
 end
 
-(* @dev: Revoke an address from being an operator of the caller. *)
-(* @param operator:         Address to be unset as operator.     *)
-transition RevokeOperator(operator: ByStr20)
-  getOperator <- operatorsMap[_sender][operator];
-  match getOperator with
+(* @dev: Revoke an address from being an teller of the caller. *)
+(* @param teller:         Address to be unset as teller.     *)
+transition RevokeTeller(teller: ByStr20)
+  getTeller <- tellersMap[_sender][teller];
+  match getTeller with
   | None =>
-    (* Operator to be removed not found *)
+    (* Teller to be removed not found *)
     err = CodeNotFound;
     MakeError err
   | Some v =>
-    delete operatorsMap[_sender][operator];
-    e = {_eventname : "RevokeOperatorSuccess"; operator : operator};
+    delete tellersMap[_sender][teller];
+    e = {_eventname : "RevokeTellerSuccess"; teller : teller};
     event e
   end
 end
 
-(* @dev: Returns true if an address is an operator of tokenHolder. *)
-(* All addresses are their own operator.                           *)
-(* @param operator:     Address of a potential operator.           *)
+(* @dev: Returns true if an address is an teller of tokenHolder. *)
+(* All addresses are their own teller.                           *)
+(* @param teller:     Address of a potential teller.           *)
 (* @param tokenHolder:  Address of a token holder.                 *)
-transition IsOperatorFor(operator: ByStr20, tokenHolder: ByStr20)
-  getOperator <- operatorsMap[tokenHolder][operator];
-    match getOperator with
+transition IsTellerFor(teller: ByStr20, tokenHolder: ByStr20)
+  getTeller <- tellersMap[tokenHolder][teller];
+    match getTeller with
   | None =>
-    (* Operator not found *)
-    e = {_eventname : "IsOperatorForSuccess"; tokenHolder: tokenHolder; operator : operator; isOperator : "False"};
+    (* Teller not found *)
+    e = {_eventname : "IsTellerForSuccess"; tokenHolder: tokenHolder; teller : teller; isTeller : "False"};
     event e
   | Some v =>
     match v with
     | True =>
-      e = {_eventname : "IsOperatorForSuccess"; tokenHolder: tokenHolder; operator : operator;  isOperator : "True"};
+      e = {_eventname : "IsTellerForSuccess"; tokenHolder: tokenHolder; teller : teller;  isTeller : "True"};
       event e
     | False =>
-      e = {_eventname : "IsOperatorForSuccess"; tokenHolder: tokenHolder; operator : operator;  isOperator : "False"};
+      e = {_eventname : "IsTellerForSuccess"; tokenHolder: tokenHolder; teller : teller;  isTeller : "False"};
       event e
     end
   end
 end
 
-(* @dev: Returns the list of default operators.         *)
-(* These addresses are operators for all token holders. *)
-transition DefaultOperators()
-  e = {_eventname : "DefaultOperatorsSuccess"; list: default_operators };
+(* @dev: Returns the list of default tellers.         *)
+(* These addresses are tellers for all token holders. *)
+transition DefaultTellers()
+  e = {_eventname : "DefaultTellersSuccess"; list: default_tellers };
   event e
 end
 
