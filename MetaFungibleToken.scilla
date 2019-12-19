@@ -15,7 +15,9 @@ let one_msg =
 type Error =
   | CodeNotAuthorised
   | CodeNotFound
+  | CodeBadRequest
   | CodeTokenExists
+  | CodeNonceError
   | CodeUnexpectedError
 
 let makeError =
@@ -24,8 +26,10 @@ let makeError =
       match result with
       | CodeNotAuthorised    => Int32 -1
       | CodeNotFound         => Int32 -2
-      | CodeTokenExists      => Int32 -3
-      | CodeUnexpectedError  => Int32 -4
+      | CodeBadRequest       => Int32 -3
+      | CodeTokenExists      => Int32 -4
+      | CodeNonceError       => Int32 -5
+      | CodeUnexpectedError  => Int32 -6
       end
     in
     { _eventname : "Error"; code : result_code }
@@ -49,6 +53,13 @@ let f_eq =
   fun (a : ByStr20) =>
   fun (b : ByStr20) =>
     builtin eq a b
+
+(* a utility function for checking that a message sender key, hash and signature matchup *)
+let valid_check_hash = 
+    fun(key: ByStr33) =>
+    fun(hash: ByStr) =>
+    fun(sig: ByStr64) =>
+        builtin schnorr_verify key hash sig
 
 (* Instantiate a type function to test membership in a list *)
 let isDefaultTeller = @list_mem ByStr20
@@ -81,6 +92,8 @@ field tellersMap: Map ByStr20 (Map ByStr20 Bool)
 field allowancesMap: Map ByStr20 (Map ByStr20 Uint128) 
   = Emp ByStr20 (Map ByStr20 Uint128)
 
+field accountNonce: Map ByStr20 Uint128 = Emp ByStr20 Uint128
+
 (* Procedures *)
 
 (* Emit Errors *)
@@ -104,50 +117,68 @@ procedure ProcedureMint(to: ByStr20, amount: Uint128)
 end
 
 (* Burn Tokens *)
-procedure ProcedureBurn(from: ByStr20, amount: Uint128)
+procedure ProcedureBurn(from: ByStr20, amount: Uint128, nonce: Uint128)
   optionBal <- balancesMap[from];
-  match optionBal with
-  | None => 
-    err = CodeUnexpectedError;
-    MakeError err
-  | Some userTokens =>
-    can_burn = le_int amount userTokens;
-    match can_burn with
-    | False =>
+    match optionBal with
+    | None => 
       err = CodeUnexpectedError;
       MakeError err
-    | True =>
-      (* subtract amount from 'from' *)
-      new_user_bal = builtin sub userTokens amount;
-      balancesMap[from] := new_user_bal;
-      e = {_eventname: "ProcedureBurnSuccess"; from: from; amount: amount};
-      event e  
-      end
-   end
+    | Some userTokens =>
+      can_burn = le_int amount userTokens;
+      match can_burn with
+      | False =>
+        err = CodeUnexpectedError;
+        MakeError err
+      | True =>
+        (*check nonce is valid*)
+        old_nonce <- accountNonce[from];
+        valid_nonce = le_int old_nonce nonce;
+        match valid_nonce with
+        | True =>
+        (* subtract amount from 'from' *)
+        new_user_bal = builtin sub userTokens amount;
+        balancesMap[from] := new_user_bal;
+        accountNonce[from] := nonce;
+        e = {_eventname: "ProcedureBurnSuccess"; from: from; amount: amount};
+        event e
+        | False =>
+        err = CodeNonceError;
+        MakeError err
+        end
+    end
+  end
 end
-
 (* Move Tokens *)
-procedure ProcedureMove(from: ByStr20, to: ByStr20, amount: Uint128)
+procedure ProcedureMove(from: ByStr20, to: ByStr20, amount: Uint128, nonce: Uint128)
   bal <- balancesMap[from];
   match bal with
   | Some b =>
     can_do = le_int amount b;
     match can_do with
     | True =>
-      (* subtract amount from _sender and add it to "to" *)
-      new_sender_bal = builtin sub b amount;
-      balancesMap[from] := new_sender_bal;
-
+      (*check nonce is valid*)
+      old_nonce <- accountNonce[from];
+      valid_nonce = le_int old_nonce nonce;
+      match valid_nonce with
+      | True =>
+        (* subtract amount from _sender and add it to "to" *)
+        new_sender_bal = builtin sub b amount;
+        balancesMap[from] := new_sender_bal;
+        accountNonce[from] := nonce;
       (* Adds amount to "to" address *)
       to_bal <- balancesMap[to];
       new_to_bal = match to_bal with
-      | Some x => builtin add x amount
-      | None => amount
+        | Some x => builtin add x amount
+        | None => amount
       end;
       
       balancesMap[to] := new_to_bal;
       e = {_eventname : "ProcedureMoveSuccess"; sender : from; recipient : to; amount : amount};
       event e
+      | False =>
+      err = CodeNonceError;
+      MakeError err
+    end
     | False =>
       (* balance not sufficient. *)
       e = {_eventname : "ProcedureMoveFailure"; sender : from; recipient : to; amount : Uint128 0};
@@ -159,7 +190,6 @@ procedure ProcedureMove(from: ByStr20, to: ByStr20, amount: Uint128)
     event e
   end
 end
-
 (* Approve Spender *)
 procedure ProcedureApprove(spender: ByStr20, amount: Uint128)
   allowancesMap[_sender][spender] := amount;
@@ -205,22 +235,28 @@ end
 (* @param recipient:  Address of the recipient whose balance is increased. *)
 (* @param amount:     Amount of tokens to be sent.                         *)
 transition Send(from: ByStr20, recipient: ByStr20, amount: Uint128)
+  nonce <-accountNonce[from];
+  newNonce = builtin add nonce 1;
   isSender = builtin eq _sender from;
     match isSender with
     | False =>
       err = CodeNotAuthorised;
       MakeError err
     | True =>
-      ProcedureMove from recipient amount
+      ProcedureMove from recipient amount newNonce
     end
 end
 
-(* @dev: Moves amount tokens from sender to recipient.                     *)
-(* @param teller:   Address must be an teller of tokenOwner.           *)
+(* @dev: Moves amount tokens from sender to recipient via metatransaction. *)
 (* @param tokenOwner: Address of the sender whose balance is decreased.    *)
 (* @param recipient:  Address of the recipient whose balance is increased. *)
 (* @param amount:     Amount of tokens to be sent.                         *)
-transition TellerSend(teller: ByStr20, tokenOwner: ByStr20, to: ByStr20, amount: Uint128)
+(* @param pubKey:     The ByStr33 public key of the tokenOwner             *)
+(* @param checkHash:  teller-supplied hash of the metatransaction check.   *)
+(* @param checkSig:   Signature of checkHash - supplied by the tokenOwer.  *)
+(* @param tip:        Amount of tokens tokenOwner allocated for the teller *)
+(* @param nonce:      The account-specific nonce to use for transaction    *)
+transition SendCheck(tokenOwner: ByStr20, recipient: ByStr20, amount: Uint128, ownerPubkey: ByStr33 checkHash:ByStr, checkSig: ByStr64, tip: Uint128, nonce: Uint128)
   someTeller <- tellersMap[tokenOwner][teller];
   isApproved = 
     match someTeller with
@@ -232,7 +268,15 @@ transition TellerSend(teller: ByStr20, tokenOwner: ByStr20, to: ByStr20, amount:
       err = CodeNotAuthorised;
       MakeError err
     | True =>
-      ProcedureMove tokenOwner to amount
+      (* Begin substantial additions for ZRC3 *)
+      isValidCheck = valid_check_hash ownerPubkey checkHash checkSig
+      match isValidCheck with
+      | False => 
+          err = CodeBadRequest;
+          MakeError err
+      | True =>
+          ProcedureMove tokenOwner recipient amount nonce
+    end 
    end
 end
 

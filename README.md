@@ -15,7 +15,7 @@ This contract is based largely on the recommendations of [EIP-965](https://githu
   
 }
 ```
-This transaction authorizes a teller to submit this check on their behalf. 
+This transaction authorizes a teller to submit this check on their behalf. Note: the addresses must all be converted to 0x format before signing to be valid.
 
 
 ## Teller responsibilities
