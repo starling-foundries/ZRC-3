@@ -7,7 +7,7 @@ This contract is based largely on the recommendations of [EIP-965](https://githu
 
 ```json
 {
-    "recipient" : "0x00000000...",
+           "to" : "0x00000000...",
        "amount" : 100,
      "contract" : "0x12395345...",
           "fee" : 2,

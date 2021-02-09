@@ -42,8 +42,8 @@ The fungible token contract must define the following constants for use as error
 | `CodeInsufficientAllowance` | `Int32` | `-3` | Emit when there is insufficient allowance to authorise transaction.                            |
 | `CodeNotOwner`              | `Int32` | `-4` | Emit when the sender is not contract_owner. This error code is optional.                       |
 | `CodeNotApprovedOperator`   | `Int32` | `-5` | Emit when caller is not an approved operator or default_operator. This error code is optional. |
-| `CodeInvalidCheque`         | `Int32` | `-6` | Emit when the metatransaction cheque is improperly formed.                                     |
-| `CodeInvalidChequeSig`      | `Int32` | `-7` | Emit when a metatransaction signature does not match the cheque parameters.                    |
+| `CodeChequeVoid`            | `Int32` | `-6` | Emit when the metatransaction cheque is improperly formed.                                     |
+| `CodeSignatureInvalid`      | `Int32` | `-7` | Emit when a metatransaction signature does not match the cheque parameters.                    |
 
 
 ### C. Immutable Variables
@@ -66,7 +66,7 @@ The fungible token contract must define the following constants for use as error
 | `allowances`                | `Map ByStr20 (Map ByStr20 Uint128)` | Mapping from token owner to approved spender address. Token owner can give an address an allowance of tokens to transfer tokens to other addresses.                                                                                                    |
 | `operators`                 | `Map ByStr20 (Map ByStr20 Unit)`    | Mapping from token owner to designated operators. A token owner can approve an address as an operator (as per the definition of operator given above). This mapping is optional.                                                                       |
 | `revoked_default_operators` | `Map ByStr20 (Map ByStr20 Unit)`    | Mapping from token owner to revoked default operators. Default operators are intialised by the contract owner. A token owner can revoked a default operator (as per the definition of default operator given above) at will. This mapping is optional. |
-| `void_cheques` | `Map ByStr32 ByStr20` | Mapping of the hashes of the metatransaction that has been processed, and the relayer wallet that submitted it to the chain. |
+| `void_cheques` | `Map ByStr ByStr20` | Mapping of the hashes of the metatransaction that has been processed, and the relayer wallet that submitted it to the chain. |
 
 ### E. Getter Transitions
 
@@ -350,7 +350,7 @@ transition OperatorSend(from: ByStr20, to: ByStr20, amount: Uint128)
 (* @param fee:         Reward taken from the cheque senders balance for the relayer.                    *)
 (* @param nonce:       A random value included in the cheque to make each unique.                       *)
 (* @param signature:   The signature of the cheque by the token owner to authorize spend.               *)
-transition OperatorSend(from: ByStr20, to: ByStr20, amount: Uint128)
+transition ChequeSend(pubkey: ByStr20, to: ByStr20, amount: Uint128, fee: Uint128, nonce:Uint218, signature: ByStr64)
 ```
 
 **Arguments:**
@@ -375,7 +375,7 @@ transition OperatorSend(from: ByStr20, to: ByStr20, amount: Uint128)
 |              | Name                  | Description                | Event Parameters                                                                                                                                                                                                                                           |
 | ------------ | --------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `_eventname` | `ChequeSendSuccess` | Sending is successful.     | `initiator`: `ByStr20` which is the operator's address, `sender`: `ByStr20` which is the token_owner's address, `recipient`: `ByStr20` which is the recipient's address, and `amount`: `Uint128` which is the amount of fungible tokens to be transferred. |
-| `_eventname` | `Error`               | Sending is not successful. | - emit `CodeInvalidCheque` if the cheque is malformed or fails to pass validation <br> - emit `CodeInsufficientFunds` if the balance of the token_owner is lesser than the specified amount that is to be transferred.<br> - emit `CodeInvalidSig` if the signature of the cheque does not match the cheque parameters.  |
+| `_eventname` | `Error`               | Sending is not successful. | - emit `CodeChequeVoid` if the cheque submitted has already been transferred.<br>- emit `CodeInsufficientFunds` if the balance of the token_owner is lesser than the specified amount that is to be transferred.<br> - emit `CodeSignatureInvalid` if the signature of the cheque does not match the cheque parameters.  |
 
 ## V. Existing Implementation(s)
 
