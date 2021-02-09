@@ -22,6 +22,8 @@ type Error =
 | CodeIsSender
 | CodeInsufficientFunds
 | CodeInsufficientAllowance
+| CodeInvalidCheque
+| CodeInvalidChequeSig
 
 let make_error =
   fun (result : Error) =>
@@ -30,6 +32,8 @@ let make_error =
       | CodeIsSender              => Int32 -1
       | CodeInsufficientFunds     => Int32 -2
       | CodeInsufficientAllowance => Int32 -3
+      | CodeInvalidCheque         => Int32 -4
+      | CodeInvalidChequeSig      => Int32 -5
       end
     in
     { _exception : "Error"; code : result_code }
