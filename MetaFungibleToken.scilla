@@ -75,6 +75,7 @@ field balances: Map ByStr20 Uint128
 field allowances: Map ByStr20 (Map ByStr20 Uint128) 
   = Emp ByStr20 (Map ByStr20 Uint128)
 
+field void_cheques: Map ByStr32 ByStr20
 (**************************************)
 (*             Procedures             *)
 (**************************************)
