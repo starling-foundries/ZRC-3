@@ -40,10 +40,11 @@ The fungible token contract must define the following constants for use as error
 | `CodeIsSender`              | `Int32` | `-1` | Emit when an address is same as is the sender.                                                 |
 | `CodeInsufficientFunds`     | `Int32` | `-2` | Emit when there is insufficient balance to authorise transaction.                              |
 | `CodeInsufficientAllowance` | `Int32` | `-3` | Emit when there is insufficient allowance to authorise transaction.                            |
-| `CodeNotOwner`              | `Int32` | `-4` | Emit when the sender is not contract_owner. This error code is optional.                       |
-| `CodeNotApprovedOperator`   | `Int32` | `-5` | Emit when caller is not an approved operator or default_operator. This error code is optional. |
-| `CodeChequeVoid`            | `Int32` | `-6` | Emit when the metatransaction cheque is improperly formed.                                     |
-| `CodeSignatureInvalid`      | `Int32` | `-7` | Emit when a metatransaction signature does not match the cheque parameters.                    |
+| `CodeChequeVoid`            | `Int32` | `-4` | Emit when the metatransaction cheque is improperly formed.                                     |
+| `CodeSignatureInvalid`      | `Int32` | `-5` | Emit when a metatransaction signature does not match the cheque parameters.                    |
+| `CodeInvalidSigner`      | `Int32` | `-6` | Emit when a metatransaction signer is not the owner of the tokens they try to move. |
+| `CodeNotOwner`              | `Int32` | `-7` | Emit when the sender is not contract_owner. This error code is optional.                       |
+| `CodeNotApprovedOperator`   | `Int32` | `-8` | Emit when caller is not an approved operator or default_operator. This error code is optional. |
 
 
 ### C. Immutable Variables
@@ -375,7 +376,44 @@ transition ChequeSend(pubkey: ByStr20, to: ByStr20, amount: Uint128, fee: Uint12
 |              | Name                  | Description                | Event Parameters                                                                                                                                                                                                                                           |
 | ------------ | --------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `_eventname` | `ChequeSendSuccess` | Sending is successful.     | `initiator`: `ByStr20` which is the operator's address, `sender`: `ByStr20` which is the token_owner's address, `recipient`: `ByStr20` which is the recipient's address, and `amount`: `Uint128` which is the amount of fungible tokens to be transferred. |
-| `_eventname` | `Error`               | Sending is not successful. | - emit `CodeChequeVoid` if the cheque submitted has already been transferred.<br>- emit `CodeInsufficientFunds` if the balance of the token_owner is lesser than the specified amount that is to be transferred.<br> - emit `CodeSignatureInvalid` if the signature of the cheque does not match the cheque parameters.  |
+| `_eventname` | `Error`               | Sending is not successful. | - emit `CodeChequeVoid` if the cheque submitted has already been transferred.<br>- emit `CodeInsufficientFunds` if the balance of the token_owner is lesser than the specified amount that is to be transferred.<br> - emit `CodeSignatureInvalid` if the signature of the cheque does not match the cheque parameters. <br> - emit `CodeInvalidSigner` if the signer of the metatransaction is not the owner of the tokens to be moved.  |
+
+#### 11. ChequeVoid() (Optional)
+
+```ocaml
+
+(* @dev: Voids a cheque that _sender does not wish to be processed                                      *)
+(* @dev: Balance of recipient will remain the same.                                                     *)
+(* @param pubkey:      Public Key of the token_owner within the cheque.                                 *)
+(* @param to:          Address of the recipient within the cheque.                                      *)
+(* @param amount:      Amount of tokens which would have been sent within the cheque.                   *)
+(* @param fee:         Reward to be taken from the cheque senders balance if the cheque was processed.  *)
+(* @param nonce:       A random value included in the cheque to make each unique.                       *)
+(* @param signature:   The signature of the cheque by the token owner that authorized the spend.        *)
+transition ChequeVoid(pubkey: ByStr33, from: ByStr20, to: ByStr20, amount: Uint128, fee: Uint128, nonce:Uint128, signature: ByStr64)
+```
+
+**Arguments:**
+
+|        | Name       | Type      | Description                                                        |
+| ------ | --------   | --------- | --------------------------------------------------------           |
+| @param | `pubkey`   | `ByStr33` | Public Key of the token_owner within the cheque.         |
+| @param | `to`       | `ByStr20` | Address of the recipient within the cheque.             |
+| @param | `amount`   | `Uint128` |  Amount of tokens which would have been sent within the cheque.                                       |
+| @param | `fee`      | `Uint128` | Reward to be taken from the cheque senders balance if the cheque was processed.      |
+| @param | `nonce`    | `Uint128` | A random value included in the cheque to make each unique.         |
+| @param | `signature`| `ByStr64` | The signature of the cheque by the token owner that authorized the spend. |
+**Messages sent:**
+
+|        | Name                          | Description                                           | Callback Parameters                                                                                                                                                                                                                                                                                  |
+| ------ | ----------------------------- | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+
+**Events/Errors:**
+
+|              | Name                  | Description                | Event Parameters                                                                                                                                                                                                                                           |
+| ------------ | --------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `_eventname` | `ChequeVoidSuccess` | Broadcast if voiding is successful.     | `initiator`: `ByStr20` which is the operator's address, `sender`: `ByStr20` which is the token_owner's address, `recipient`: `ByStr20` which is the recipient's address, and `amount`: `Uint128` which is the amount of fungible tokens to be transferred. |
+| `_eventname` | `Error`               | Sending is not successful. | - emit `CodeChequeVoid` if the cheque submitted has already been transferred.<br>- emit `CodeInsufficientFunds` if the balance of the token_owner is lesser than the specified amount that is to be transferred.<br> - emit `CodeSignatureInvalid` if the signature of the cheque does not match the cheque parameters. <br> - emit `CodeInvalidSigner` if the signer of the metatransaction is not the owner of the tokens to be moved.  |
 
 ## V. Existing Implementation(s)
 
