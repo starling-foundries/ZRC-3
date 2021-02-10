@@ -1,5 +1,5 @@
 # The ZRC-3 Metatransaction-enabled Fungible Token Contract
-
+** NOTE: this repository has been retired in favor of a single repository containing all the required components: [relay.js](https://github.com/starling-foundries/relay.js)
 This reference implementation extends [FungibleToken.scilla](https://raw.githubusercontent.com/Zilliqa/ZRC/master/reference/FungibleToken.scilla) according to the reference found [here](https://github.com/starling-foundries/ZRC/blob/master/zrcs/zrc-3.md).
 
 ## Design
